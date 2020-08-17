@@ -16,6 +16,8 @@ extern "C"
 static Uint8  *audio_chunk;
 static Uint32  audio_len;
 static Uint8  *audio_pos;
+AVRational a = {1, 1000};///substitution causes an error, why?
+bool VideoStop = false;
 static void fill_audio(void *udata,Uint8 *stream,int len)
 {
     //SDL 2.0
@@ -33,6 +35,11 @@ public:
     virtual void init(const char *url) = 0;
     virtual void play() = 0;
     virtual void stop() = 0;
+    virtual int GetCurrentPTS() = 0;
+    virtual bool MediaFinished() = 0;
+    virtual int ReadFrame() = 0;
+    virtual void write_frames() = 0;
+    virtual ~IMedia()= default;
 };
 class CFFmpeg_Audio : public IMedia
 {
@@ -53,15 +60,77 @@ class CFFmpeg_Audio : public IMedia
     int out_buffer_size{};
     std::mutex mu;
     std::deque<AVFrame*> aframe_buf;
-    bool flag{};
+    bool flag{}, Afinish{};
     AVCodecContext *pCodecCtxOrig{};
     AVCodecParameters *pParam{};
     std::thread thread1;
     std::thread thread2;
+    int CurrentPTS{};
 
+
+    void write_current_frame()
+    {
+        if (packet->stream_index == audioStream)
+        {
+            pFrame=av_frame_alloc();
+            avcodec_send_packet(pCodecCtx, packet);
+            avcodec_receive_frame(pCodecCtx, pFrame);
+            pFrame->pts = av_rescale_q(packet->pts, pFormatCtx->streams[audioStream]->time_base, a);
+            while (aframe_buf.size() > 200)
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+            mu.lock();
+            aframe_buf.push_back(pFrame);
+            mu.unlock();
+        }
+        av_packet_unref(packet);
+    }
+    void read_current_frame(AVFrame *frame)
+    {
+        CurrentPTS = frame->pts;
+        swr_convert(au_convert_ctx,&out_buffer, MAX_AUDIO_FRAME_SIZE,(const uint8_t **)frame->data , frame->nb_samples);
+
+        while(audio_len>0)//Wait until finish
+            SDL_Delay(1);
+
+        audio_chunk = (Uint8 *) out_buffer;
+        audio_len = out_buffer_size;
+        audio_pos = audio_chunk;
+    }
+    int ReadFrame() override
+    {
+        AVFrame *frame;
+        mu.lock();
+        if (aframe_buf.empty() && !flag)
+        {
+            mu.unlock();
+            return 2;
+        }
+        if (aframe_buf.empty())
+        {
+            mu.unlock();
+            return 1;
+        }
+
+        frame = aframe_buf.front();
+        aframe_buf.pop_front();
+        mu.unlock();
+        CurrentPTS = frame->pts;
+        swr_convert(au_convert_ctx,&out_buffer, MAX_AUDIO_FRAME_SIZE,(const uint8_t **)frame->data , frame->nb_samples);
+
+        while(audio_len>0)//Wait until finish
+            SDL_Delay(1);
+
+        audio_chunk = (Uint8 *) out_buffer;
+        audio_len = out_buffer_size;
+        audio_pos = audio_chunk;
+        av_frame_unref(frame);
+        return 0;
+    }
     void init_audio(const char *url)
     {
-        flag = true;
+
         if(avformat_open_input(&pFormatCtx, url, nullptr, nullptr)!=0)//argv[1]
         {
             printf("Couldn't open file\n");
@@ -116,6 +185,7 @@ class CFFmpeg_Audio : public IMedia
     }
     void init_SDL()
     {
+        flag = true;
         if(SDL_Init(SDL_INIT_AUDIO))
         {
             printf( "Could not initialize SDL - %s\n", SDL_GetError());
@@ -139,26 +209,12 @@ class CFFmpeg_Audio : public IMedia
                                           in_channel_layout,pCodecCtx->sample_fmt , pCodecCtx->sample_rate,0, nullptr);
         swr_init(au_convert_ctx);
     }
-    void write_frames()
+    void write_frames() override
     {
-        AVRational a = {1,1000};
+
         while (av_read_frame(pFormatCtx, packet) >= 0)
         {
-            if (packet->stream_index == audioStream)
-            {
-                pFrame=av_frame_alloc();
-                avcodec_send_packet(pCodecCtx, packet);
-                avcodec_receive_frame(pCodecCtx, pFrame);
-                pFrame->pts = av_rescale_q(packet->pts, pFormatCtx->streams[audioStream]->time_base, a);
-                while (aframe_buf.size() > 100)
-                {
-                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
-                }
-                mu.lock();
-                aframe_buf.push_back(pFrame);
-                mu.unlock();
-            }
-            av_packet_unref(packet);
+            write_current_frame();
         }
         flag = false;
     }
@@ -172,9 +228,9 @@ class CFFmpeg_Audio : public IMedia
             if (aframe_buf.empty() && !flag)
             {
                 mu.unlock();
-                SDL_CloseAudio();//Close SDL
-                SDL_Quit();
-                return;
+//                SDL_CloseAudio();//Close SDL
+//                SDL_Quit();
+                break;
             }
             if (aframe_buf.empty())
             {
@@ -187,23 +243,23 @@ class CFFmpeg_Audio : public IMedia
             frame = aframe_buf.front();
             aframe_buf.pop_front();
             mu.unlock();
-            swr_convert(au_convert_ctx,&out_buffer, MAX_AUDIO_FRAME_SIZE,(const uint8_t **)frame->data , frame->nb_samples);
-
-            while(audio_len>0)//Wait until finish
-                SDL_Delay(1);
-
-            audio_chunk = (Uint8 *) out_buffer;
-            audio_len = out_buffer_size;
-            audio_pos = audio_chunk;
+            read_current_frame(frame);
             av_frame_unref(frame);
         }
-
+        Afinish = true;
         SDL_CloseAudio();//Close SDL
         SDL_Quit();
     }
 public:
     CFFmpeg_Audio() = default;
-
+    int GetCurrentPTS() override
+    {
+        return CurrentPTS;
+    }
+    bool MediaFinished() override
+    {
+        return Afinish;
+    }
     void init(const char *url) override
     {
         init_audio(url);
@@ -249,8 +305,8 @@ public:
     }
     void stop() override
     {
-        thread1.join();
-        thread2.join();
+//        thread1.join();
+//        thread2.join();
         swr_free(&au_convert_ctx);
         av_free(out_buffer);
         avcodec_close(pCodecCtxOrig);
@@ -280,10 +336,92 @@ class CFFmpegVideo : public IMedia
     int uvPitch{};
     std::mutex mu;
     std::deque<AVFrame*> vframe_buf;
-    bool flag{};
+    bool flag{}, Vfinish{};
     std::thread thread1;
     std::thread thread2;
+    int CurrentPTS{};
 
+    void write_current_frame()
+    {
+        pFrame=av_frame_alloc();
+        avcodec_send_packet(pCodecCtx, packet);
+        avcodec_receive_frame(pCodecCtx, pFrame);
+        pFrame->pts = av_rescale_q(packet->pts, pFormatCtx->streams[videoStream]->time_base, a);
+
+        while (vframe_buf.size() > 100)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        }
+        mu.lock();
+        vframe_buf.push_back(pFrame);
+        mu.unlock();
+    }
+    void read_current_frame(AVFrame *frame, AVPicture pict)
+    {
+        sws_scale(sws_ctx, (uint8_t const *const *) frame->data, frame->linesize, 0, pCodecCtx->height, pict.data,
+                  pict.linesize);
+        SDL_UpdateYUVTexture(
+                texture,
+                nullptr,
+                yPlane,
+                pCodecCtx->width,
+                uPlane,
+                uvPitch,
+                vPlane,
+                uvPitch
+        );
+        SDL_RenderClear(renderer);
+        SDL_RenderCopy(renderer, texture, nullptr, nullptr);
+        SDL_RenderPresent(renderer);
+        printf("Current PTS = %d\n", CurrentPTS);
+    }
+    int ReadFrame() override
+    {
+        AVFrame *frame;
+        mu.lock();
+        if (vframe_buf.empty() && !flag)
+        {
+            mu.unlock();
+            return 2;
+        }
+        if (vframe_buf.empty())
+        {
+            mu.unlock();
+            return 1;
+        }
+        frame = vframe_buf.front();
+        vframe_buf.pop_front();
+
+        CurrentPTS = frame->pts;
+        mu.unlock();
+        AVPicture pict;
+        pict.data[0] = yPlane;
+        pict.data[1] = uPlane;
+        pict.data[2] = vPlane;
+        pict.linesize[0] = pCodecCtx->width;
+        pict.linesize[1] = uvPitch;
+        pict.linesize[2] = uvPitch;
+//                // Convert the image into YUV format that SDL uses
+//        read_current_frame(frame, pict);
+        sws_scale(sws_ctx, (uint8_t const *const *) frame->data, frame->linesize, 0, pCodecCtx->height, pict.data,
+                  pict.linesize);
+        SDL_UpdateYUVTexture(
+                texture,
+                nullptr,
+                yPlane,
+                pCodecCtx->width,
+                uPlane,
+                uvPitch,
+                vPlane,
+                uvPitch
+        );
+        SDL_RenderClear(renderer);
+        SDL_RenderCopy(renderer, texture, nullptr, nullptr);
+        SDL_RenderPresent(renderer);
+//        printf("Current PTS = %d\n", CurrentPTS);
+        av_frame_unref(frame);
+        return 0;
+    }
     void init_video(const char *url)
     {
         if(avformat_open_input(&pFormatCtx, url, nullptr, nullptr)!=0)//argv[1]
@@ -385,27 +523,16 @@ class CFFmpegVideo : public IMedia
         }
         uvPitch = pCodecCtx->width / 2;
     }
-    void write_frames()
+    void write_frames() override
     {
-        AVRational a = {1, 1000};
+
         packet = av_packet_alloc();
         while(av_read_frame(pFormatCtx, packet)>=0)
         {
             // Is this a packet from the video stream?
             if(packet->stream_index==videoStream)
             {
-                pFrame=av_frame_alloc();
-                avcodec_send_packet(pCodecCtx, packet);
-                avcodec_receive_frame(pCodecCtx, pFrame);
-                pFrame->pts = av_rescale_q(packet->pts, pFormatCtx->streams[videoStream]->time_base, a);
-
-                while (vframe_buf.size() > 100)
-                {
-                    std::this_thread::sleep_for(std::chrono::milliseconds(2));
-                }
-                mu.lock();
-                vframe_buf.push_back(pFrame);
-                mu.unlock();
+                write_current_frame();
             }
         }
         av_packet_unref(packet);
@@ -413,12 +540,16 @@ class CFFmpegVideo : public IMedia
     }
     void read_frames()
     {
-        int PTS;
+        //int PTS;
         long double msec;
         struct timespec time1, time2;
-        clock_gettime(CLOCK_REALTIME, &time2);
+//        clock_gettime(CLOCK_REALTIME, &time2);
         while (true)
         {
+            while (VideoStop)
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
             AVFrame *frame;
             mu.lock();
             if (!flag && vframe_buf.empty())
@@ -426,8 +557,9 @@ class CFFmpegVideo : public IMedia
                 SDL_DestroyTexture(texture);
                 SDL_DestroyRenderer(renderer);
                 SDL_DestroyWindow(window);
-                SDL_Quit();
+//                SDL_Quit();
                 mu.unlock();
+                Vfinish = true;
                 return;
             }
             if(vframe_buf.empty())
@@ -440,13 +572,13 @@ class CFFmpegVideo : public IMedia
             vframe_buf.pop_front();
             mu.unlock();
 
-            PTS = frame->pts;
-            while (true) {
-                clock_gettime(CLOCK_REALTIME, &time1);
-                msec = 1000 * (time1.tv_sec - time2.tv_sec) + (time1.tv_nsec - time2.tv_nsec) / 1000000;
-                if (PTS <= msec)
-                    break;
-            }
+            CurrentPTS = frame->pts;
+//            while (true) {
+//                clock_gettime(CLOCK_REALTIME, &time1);
+//                msec = 1000 * (time1.tv_sec - time2.tv_sec) + (time1.tv_nsec - time2.tv_nsec) / 1000000;
+//                if (CurrentPTS <= msec)
+//                    break;
+//            }
             printf("Time from start video = %Lf\n", msec);
             AVPicture pict;
             pict.data[0] = yPlane;
@@ -456,22 +588,7 @@ class CFFmpegVideo : public IMedia
             pict.linesize[1] = uvPitch;
             pict.linesize[2] = uvPitch;
 //                // Convert the image into YUV format that SDL uses
-            sws_scale(sws_ctx, (uint8_t const *const *) frame->data, frame->linesize, 0, pCodecCtx->height, pict.data,
-                      pict.linesize);
-            SDL_UpdateYUVTexture(
-                    texture,
-                    nullptr,
-                    yPlane,
-                    pCodecCtx->width,
-                    uPlane,
-                    uvPitch,
-                    vPlane,
-                    uvPitch
-            );
-            SDL_RenderClear(renderer);
-            SDL_RenderCopy(renderer, texture, nullptr, nullptr);
-            SDL_RenderPresent(renderer);
-            printf("Current PTS = %d\n", PTS);
+            read_current_frame(frame, pict);
             av_frame_unref(frame);
             SDL_PollEvent(&event);
             switch (event.type)
@@ -482,13 +599,23 @@ class CFFmpegVideo : public IMedia
                     SDL_DestroyRenderer(renderer);
                     SDL_DestroyWindow(window);
                     SDL_Quit();
+                    Vfinish = true;
                     return;
                 default:
                     break;
             }
         }
+        Vfinish = true;
     }
 public:
+    int GetCurrentPTS() override
+    {
+        return CurrentPTS;
+    }
+    bool MediaFinished() override
+    {
+        return Vfinish;
+    }
     CFFmpegVideo() = default;
     void init(const char *url) override
     {
@@ -506,8 +633,8 @@ public:
     }
     void stop() override
     {
-        thread1.join();
-        thread2.join();
+//        thread1.join();
+//        thread2.join();
         free(yPlane);
         free(uPlane);
         free(vPlane);
@@ -517,21 +644,91 @@ public:
     }
 };
 
+class CMediaPlayer
+{
+    IMedia *video ={};
+    IMedia *audio{};
+    std::thread th1;
+    std::thread th2;
+
+public:
+    explicit CMediaPlayer(char *url)
+    {
+        video = new CFFmpegVideo;
+        audio = new CFFmpeg_Audio;
+        video->init(url);
+        audio->init(url);
+    }
+    ~CMediaPlayer() = default;
+
+    void Play()
+    {
+        th1 = std::thread(&IMedia::write_frames, video);
+        th2 = std::thread(&IMedia::write_frames, audio);
+//        video->write_frames();
+//        audio->write_frames();
+        SDL_PauseAudio(0);
+        while (true)///!video->MediaFinished() && !audio->MediaFinished()
+        {
+            if (audio->ReadFrame() < 2)
+            {
+                if (video->GetCurrentPTS() <= audio->GetCurrentPTS())
+                {
+                    if (video->ReadFrame() == 2)
+                    {
+                        break;
+                    }
+                }
+
+            }
+
+
+//            printf("V  %d\n", video->GetCurrentPTS());
+//            printf("A  %d\n", audio->GetCurrentPTS());
+//            if (video->GetCurrentPTS() > audio->GetCurrentPTS())
+//                VideoStop = true;
+//            else
+//                VideoStop = false;
+        }
+//        SDL_DestroyTexture(texture);
+//        SDL_DestroyRenderer(renderer);
+//        SDL_DestroyWindow(window);
+        SDL_CloseAudio();//Close SDL
+        SDL_Quit();
+    }
+
+    void Stop()
+    {
+        th1.join();
+        th2.join();
+
+        video->stop();
+        audio->stop();
+    }
+};
+
+
 int main(int argc, char *argv[])
 {
-    IMedia *video = new CFFmpegVideo;
-    IMedia *audio = new CFFmpeg_Audio;
-    char *url = argv[1];
-    video->init(url);
-    audio->init(url);
-//    std::thread video_play(&IVideo::play, video);
-//    std::thread audio_play(&IAudio::play, audio);
-//    video_play.join();
-//    audio_play.join();
-    video->play();
-    audio->play();
-    video->stop();
-    audio->stop();
+    auto *media = new CMediaPlayer("videoplayback");
+    media->Play();
+    media->Stop();
+
+
+//    IMedia *video = new CFFmpegVideo;
+//    IMedia *audio = new CFFmpeg_Audio;
+//    char *url = argv[1];
+//    video->init(url);
+//    audio->init(url);
+////    std::thread video_play(&IVideo::play, video);
+////    std::thread audio_play(&IAudio::play, audio);
+////    video_play.join();
+////    audio_play.join();
+//    video->play();
+//    audio->play();
+//    video->stop();
+//    audio->stop();
+//    delete video, audio;
     return 0;
 }
 
