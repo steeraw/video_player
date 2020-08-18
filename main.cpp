@@ -17,23 +17,13 @@ static Uint8  *audio_chunk;
 static Uint32  audio_len;
 static Uint8  *audio_pos;
 AVRational a = {1, 1000};///substitution causes an error, why?
-bool VideoStop = false;
-static void fill_audio(void *udata,Uint8 *stream,int len)
-{
-    //SDL 2.0
-    SDL_memset(stream, 0, len);
-    if(audio_len==0)
-        return;
-    len=(len>(int)audio_len?(int)audio_len:len);	/*  Mix  as  much  data  as  possible  */
-    SDL_MixAudio(stream,audio_pos,len,SDL_MIX_MAXVOLUME);
-    audio_pos += len;
-    audio_len -= len;
-}
+attribute_deprecated bool VideoStop = false;
+
 class IMedia
 {
 public:
     virtual void init(const char *url) = 0;
-    virtual void play() = 0;
+    attribute_deprecated virtual void play() = 0;
     virtual void stop() = 0;
     virtual int GetCurrentPTS() = 0;
     virtual bool MediaFinished() = 0;
@@ -41,6 +31,7 @@ public:
     virtual void write_frames() = 0;
     virtual ~IMedia()= default;
 };
+
 class CFFmpeg_Audio : public IMedia
 {
     AVFormatContext	*pFormatCtx{};
@@ -67,7 +58,17 @@ class CFFmpeg_Audio : public IMedia
     std::thread thread2;
     int CurrentPTS{};
 
-
+    static void fill_audio(void *udata,Uint8 *stream,int len)
+    {
+        //SDL 2.0
+        SDL_memset(stream, 0, len);
+        if(audio_len==0)
+            return;
+        len=(len>(int)audio_len?(int)audio_len:len);	/*  Mix  as  much  data  as  possible  */
+        SDL_MixAudio(stream,audio_pos,len,SDL_MIX_MAXVOLUME);
+        audio_pos += len;
+        audio_len -= len;
+    }
     void write_current_frame()
     {
         if (packet->stream_index == audioStream)
@@ -86,7 +87,7 @@ class CFFmpeg_Audio : public IMedia
         }
         av_packet_unref(packet);
     }
-    void read_current_frame(AVFrame *frame)
+    attribute_deprecated void read_current_frame(AVFrame *frame)
     {
         CurrentPTS = frame->pts;
         swr_convert(au_convert_ctx,&out_buffer, MAX_AUDIO_FRAME_SIZE,(const uint8_t **)frame->data , frame->nb_samples);
@@ -105,6 +106,7 @@ class CFFmpeg_Audio : public IMedia
         if (aframe_buf.empty() && !flag)
         {
             mu.unlock();
+            Afinish = true;
             return 2;
         }
         if (aframe_buf.empty())
@@ -218,7 +220,7 @@ class CFFmpeg_Audio : public IMedia
         }
         flag = false;
     }
-    void read_frames()
+    attribute_deprecated void read_frames()
     {
         SDL_PauseAudio(0);
 
@@ -266,7 +268,7 @@ public:
         init_contexts();
         init_SDL();
     }
-    void play() override
+    attribute_deprecated void play() override
     {
 //        write_frames();
 //        read_frames();
@@ -314,6 +316,7 @@ public:
         avformat_close_input(&pFormatCtx);
     }
 };
+
 class CFFmpegVideo : public IMedia
 {
     AVFormatContext *pFormatCtx{};
@@ -356,7 +359,7 @@ class CFFmpegVideo : public IMedia
         vframe_buf.push_back(pFrame);
         mu.unlock();
     }
-    void read_current_frame(AVFrame *frame, AVPicture pict)
+    attribute_deprecated void read_current_frame(AVFrame *frame, AVPicture pict)
     {
         sws_scale(sws_ctx, (uint8_t const *const *) frame->data, frame->linesize, 0, pCodecCtx->height, pict.data,
                   pict.linesize);
@@ -382,6 +385,7 @@ class CFFmpegVideo : public IMedia
         if (vframe_buf.empty() && !flag)
         {
             mu.unlock();
+            Vfinish = true;
             return 2;
         }
         if (vframe_buf.empty())
@@ -538,7 +542,7 @@ class CFFmpegVideo : public IMedia
         av_packet_unref(packet);
         flag = false;
     }
-    void read_frames()
+    attribute_deprecated void read_frames()
     {
         //int PTS;
         long double msec;
@@ -623,7 +627,7 @@ public:
         init_contexts();
         init_SDL();
     }
-    void play() override
+    attribute_deprecated void play() override
     {
         if(videoStream==-1)
             return;
@@ -668,27 +672,28 @@ public:
 //        video->write_frames();
 //        audio->write_frames();
         SDL_PauseAudio(0);
-        while (true)///!video->MediaFinished() && !audio->MediaFinished()
+        while (!video->MediaFinished() && !audio->MediaFinished())///!video->MediaFinished() && !audio->MediaFinished()
         {
-            if (audio->ReadFrame() < 2)
-            {
+
+            if (!audio->MediaFinished())
+                audio->ReadFrame();
+            if (!video->MediaFinished())
                 if (video->GetCurrentPTS() <= audio->GetCurrentPTS())
-                {
-                    if (video->ReadFrame() == 2)
-                    {
-                        break;
-                    }
-                }
-
-            }
+                    video->ReadFrame();
 
 
-//            printf("V  %d\n", video->GetCurrentPTS());
-//            printf("A  %d\n", audio->GetCurrentPTS());
-//            if (video->GetCurrentPTS() > audio->GetCurrentPTS())
-//                VideoStop = true;
-//            else
-//                VideoStop = false;
+//            if (audio->ReadFrame() < 2)
+//            {
+//                if (video->GetCurrentPTS() <= audio->GetCurrentPTS())
+//                {
+//                    if (video->ReadFrame() == 2)
+//                    {
+//                        break;
+//                    }
+//                }
+//            }
+
+
         }
 //        SDL_DestroyTexture(texture);
 //        SDL_DestroyRenderer(renderer);
@@ -707,28 +712,12 @@ public:
     }
 };
 
-
 int main(int argc, char *argv[])
 {
-    auto *media = new CMediaPlayer("videoplayback");
+    auto *media = new CMediaPlayer(argv[1]);
     media->Play();
     media->Stop();
-
-
-//    IMedia *video = new CFFmpegVideo;
-//    IMedia *audio = new CFFmpeg_Audio;
-//    char *url = argv[1];
-//    video->init(url);
-//    audio->init(url);
-////    std::thread video_play(&IVideo::play, video);
-////    std::thread audio_play(&IAudio::play, audio);
-////    video_play.join();
-////    audio_play.join();
-//    video->play();
-//    audio->play();
-//    video->stop();
-//    audio->stop();
-//    delete video, audio;
+    delete media;
     return 0;
 }
 
