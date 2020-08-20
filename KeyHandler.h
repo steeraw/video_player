@@ -14,7 +14,7 @@
 #include <linux/input.h>
 #include <functional>
 #include <thread>
-
+#include <map>
 class KeyHandler
 {
     int filefd = -1;
@@ -26,8 +26,17 @@ class KeyHandler
     bool MyKey = false;
     std::function<void()> Callback;
     std::thread thread;
+    std::string MyHotKey;
+    std::map<std::string, int> key_map = {
+            {"Tab", KEY_TAB},
+            {"Enter", KEY_ENTER},
+            {"Space", KEY_SPACE},
+            {"Esc", KEY_ESC},
+            {"Backspace", KEY_BACKSPACE},
+            {"NONE", 0}
+    };
 public:
-
+    explicit KeyHandler(std::string Key);
     void SetCallback(std::function<void()> fn);
 
 

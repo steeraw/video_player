@@ -22,7 +22,7 @@ void CMediaPlayer::call_back_pause()
     else
         Pause = false;
 }
-CMediaPlayer::CMediaPlayer(char *url)
+CMediaPlayer::CMediaPlayer(std::string url)
 {
     video = new CFFmpegVideo;
     audio = new CFFmpegAudio;

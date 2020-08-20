@@ -915,13 +915,19 @@
 #include "CFFmpegVideo.h"
 #include "CMediaPlayer.h"
 #include "KeyHandler.h"
+#include "CConfig.h"
 
 
 int main(int argc, char *argv[])
 {
 
-    auto *media = new CMediaPlayer(argv[1]);
-    auto *k1 = new KeyHandler;
+    CConfig::getInstance().initConfig();
+
+//    char *url = CConfig::getInstance().getUrl();
+    std::string url = CConfig::getInstance().getUrl();
+    std::string Hotkey = CConfig::getInstance().getHotkey();
+    auto *media = new CMediaPlayer(url);
+    auto *k1 = new KeyHandler(Hotkey);
     k1->SetCallback(std::bind(&CMediaPlayer::call_back_pause, media));
     k1->Init();
 //    k1->Check();

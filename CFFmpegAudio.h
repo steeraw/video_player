@@ -58,7 +58,7 @@ class CFFmpegAudio : public IMedia
 
     int ReadFrame() override;
 
-    void init_audio(const char *url);
+    void init_audio(std::string url);
 
     void init_contexts();
 
@@ -74,7 +74,7 @@ public:
 
     bool MediaFinished() override;
 
-    void init(const char *url) override;
+    void init(std::string url) override;
 
     attribute_deprecated void play() override;
 

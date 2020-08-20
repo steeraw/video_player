@@ -53,7 +53,7 @@ class CFFmpegVideo : public IMedia
 
     int ReadFrame() override;
 
-    void init_video(const char *url);
+    void init_video(std::string url);
 
     void init_contexts();
 
@@ -72,7 +72,7 @@ public:
     void SetStatus(MediaStatus status) override;
 
     CFFmpegVideo() = default;
-    void init(const char *url) override;
+    void init(std::string url) override;
 
     attribute_deprecated void play() override;
 

@@ -29,7 +29,7 @@ public:
 
 
     CMediaPlayer() = default;
-    explicit CMediaPlayer(char *url);
+    explicit CMediaPlayer(std::string url);
 
     ~CMediaPlayer() = default;
 

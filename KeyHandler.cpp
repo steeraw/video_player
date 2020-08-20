@@ -10,6 +10,11 @@ void KeyHandler::SetCallback(std::function<void()> fn)
 }
 void KeyHandler::Init()
 {
+    if (key_map.find(MyHotKey) == key_map.end())//(!key_map[doc["Hotkey"].GetString()])//
+    {
+        printf("Hotkey incorrect, check your config. You can select Enter, Tab, Space, Esc, Backspace\n");
+        exit(1);
+    }
     session = true;
     thread = std::thread(&KeyHandler::Check, this);
 }
@@ -47,7 +52,7 @@ void KeyHandler::Check()
         memcpy(&event, data, sizeof(event));
         if(event.type == EV_KEY) {
 
-            if(event.code == KEY_SPACE && event.value == 1)
+            if(event.code == key_map[MyHotKey] && event.value == 1)
             {
                 if (MyKey)
                 {
@@ -69,6 +74,10 @@ void KeyHandler::Check()
         }
     }
     close(filefd);
+}
+
+KeyHandler::KeyHandler(std::string Key) {
+    MyHotKey = Key;
 }
 
 

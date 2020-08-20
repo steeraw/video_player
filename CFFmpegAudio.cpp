@@ -83,10 +83,10 @@ int CFFmpegAudio::ReadFrame()
     return 0;
 }
 
-void CFFmpegAudio::init_audio(const char *url)
+void CFFmpegAudio::init_audio(std::string url)
 {
     status = NOT_INITIALIZED;
-    if(avformat_open_input(&pFormatCtx, url, nullptr, nullptr)!=0)//argv[1]
+    if(avformat_open_input(&pFormatCtx, url.c_str(), nullptr, nullptr)!=0)//argv[1]
     {
         printf("Couldn't open file\n");
         return; // Couldn't open file
@@ -98,7 +98,7 @@ void CFFmpegAudio::init_audio(const char *url)
         return; // Couldn't find stream information
     }
 
-    av_dump_format(pFormatCtx, 0, url, 0);
+    av_dump_format(pFormatCtx, 0, url.c_str(), 0);
 }
 
 void CFFmpegAudio::init_contexts()
@@ -219,7 +219,7 @@ bool CFFmpegAudio::MediaFinished()
     return Afinish;
 }
 
-void CFFmpegAudio::init(const char *url)
+void CFFmpegAudio::init(std::string url)
 {
     init_audio(url);
     init_contexts();

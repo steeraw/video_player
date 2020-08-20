@@ -30,7 +30,7 @@ protected:
     MediaStatus status{};
 public:
 //    getStatus();
-    virtual void init(const char *url) = 0;
+    virtual void init(std::basic_string<char> url) = 0;
     attribute_deprecated virtual void play() = 0;
     virtual void stop() = 0;
     virtual int GetCurrentPTS() = 0;

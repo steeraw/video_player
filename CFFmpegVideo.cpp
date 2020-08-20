@@ -91,10 +91,10 @@ int CFFmpegVideo::ReadFrame()
     av_frame_unref(frame);
     return 0;
 }
-void CFFmpegVideo::init_video(const char *url)
+void CFFmpegVideo::init_video(std::string url)
 {
     status = NOT_INITIALIZED;
-    if(avformat_open_input(&pFormatCtx, url, nullptr, nullptr)!=0)//argv[1]
+    if(avformat_open_input(&pFormatCtx, url.c_str(), nullptr, nullptr)!=0)//argv[1]
     {
         printf("Couldn't open file\n");
         return; // Couldn't open file
@@ -106,7 +106,7 @@ void CFFmpegVideo::init_video(const char *url)
         return; // Couldn't find stream information
     }
 
-    av_dump_format(pFormatCtx, 0, url, 0);
+    av_dump_format(pFormatCtx, 0, url.c_str(), 0);
 }
 void CFFmpegVideo::init_contexts()
 {
@@ -293,7 +293,7 @@ void CFFmpegVideo::SetStatus(MediaStatus status)
 {
     this->status = status;
 }
-void CFFmpegVideo::init(const char *url)
+void CFFmpegVideo::init(std::string url)
 {
     init_video(url);
     init_contexts();
