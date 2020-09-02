@@ -36,73 +36,92 @@ CMediaPlayer::CMediaPlayer(std::string url)
 void CMediaPlayer::Play()
 {
 
-    th1 = std::thread(&IMedia::write_frames, video);
-    th2 = std::thread(&IMedia::write_frames, audio);
+    if (!have_video())
+    {
+        audio->play();
+    }
+    if (!have_audio())
+    {
+        video->play();
+    }
+    else
+    {
+        th1 = std::thread(&IMedia::write_frames, video);
+        th2 = std::thread(&IMedia::write_frames, audio);
 //        video->write_frames();
 //        audio->write_frames();
-
-
-
-
-
-
-
-    SDL_PauseAudio(0);
-    while (video->GetStatus() != IMedia::FINISHED || audio->GetStatus() != IMedia::FINISHED)///!video->MediaFinished() && !audio->MediaFinished()
-    {
+        SDL_PauseAudio(0);
+        while (video->GetStatus() != IMedia::FINISHED || audio->GetStatus() != IMedia::FINISHED)///!video->MediaFinished() && !audio->MediaFinished()
+        {
 
 //            Pause = true;
-        while(Pause)
-        {
-            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            while(Pause)
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(2));
 //                Pause = false;
-        }
+            }
 
-
-        if (audio->GetStatus() != IMedia::FINISHED)
-            audio->ReadFrame();
-        if (video->GetStatus() != IMedia::FINISHED)
-            if (video->GetCurrentPTS() <= audio->GetCurrentPTS())
-                video->ReadFrame();
-
-
-
-
-//            if (!audio->MediaFinished())
-//                audio->ReadFrame();
-//            if (!video->MediaFinished())
-//                if (video->GetCurrentPTS() <= audio->GetCurrentPTS())
-//                    video->ReadFrame();
-
-
-
-
-//            if (audio->ReadFrame() < 2)
+//            if (video->GetCurrentPTS() > audio->GetCurrentPTS() + 30)
 //            {
-//                if (video->GetCurrentPTS() <= audio->GetCurrentPTS())
-//                {
-//                    if (video->ReadFrame() == 2)
-//                    {
-//                        break;
-//                    }
-//                }
+//                audio->SkipFrame();
 //            }
 
 
-    }
+            if (audio->GetStatus() != IMedia::FINISHED)
+                audio->ReadFrame();
+            if (video->GetStatus() != IMedia::FINISHED)
+            {
+                while (video->GetCurrentPTS() + 50 < audio->GetCurrentPTS())
+                {
+                    video->SkipFrame();
+                }
+
+                if (video->GetCurrentPTS() <= audio->GetCurrentPTS())
+                    video->ReadFrame();
+
+//                if (video->GetCurrentPTS() <= audio->GetCurrentPTS())
+//                    video->ReadFrame();
+            }
+
+
+        }
 //        SDL_DestroyTexture(texture);
 //        SDL_DestroyRenderer(renderer);
 //        SDL_DestroyWindow(window);
-    SDL_CloseAudio();//Close SDL
-    SDL_Quit();
+        SDL_CloseAudio();//Close SDL
+        SDL_Quit();
+    }
+
+
+
+
+
 }
 void CMediaPlayer::Stop()
 {
-    th1.join();
-    th2.join();
+    if (have_audio() && have_video())
+    {
+        th1.join();
+        th2.join();
+    }
 
-    video->stop();
-    audio->stop();
+
+    if (have_video())
+        video->stop();
+    if (have_audio())
+        audio->stop();
+}
+
+bool CMediaPlayer::have_video() {
+    if (video->no_media)
+        return false;
+    return true;
+}
+
+bool CMediaPlayer::have_audio() {
+    if (audio->no_media)
+        return false;
+    return true;
 }
 
 

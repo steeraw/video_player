@@ -911,8 +911,8 @@
 //};
 
 
-#include "CFFmpegAudio.h"
-#include "CFFmpegVideo.h"
+//#include "CFFmpegAudio.h"
+//#include "CFFmpegVideo.h"
 #include "CMediaPlayer.h"
 #include "KeyHandler.h"
 #include "CConfig.h"
@@ -936,6 +936,18 @@ int main(int argc, char *argv[])
     k1->Stop();
 
     delete media;
+
+
+
+//auto *audio = new CFFmpegAudio;
+//audio->init("music.mp3");
+//audio->play();
+//audio->stop();
+
+
+
+
+
     return 0;
 }
 

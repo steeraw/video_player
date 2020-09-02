@@ -4,14 +4,16 @@
 
 #ifndef VIDEO_TEST2_IMEDIA_H
 #define VIDEO_TEST2_IMEDIA_H
-
+#define FNUM 3
 
 #include <functional>
 #include <libavutil/attributes.h>
 
+
 class IMedia
 {
 public:
+
     enum MediaStatus
     {
         NOT_INITIALIZED,
@@ -25,8 +27,8 @@ public:
         Callback = std::move(fn);
     }
 
+    bool no_media;
 protected:
-
     MediaStatus status{};
 public:
 //    getStatus();
@@ -35,6 +37,7 @@ public:
     virtual void stop() = 0;
     virtual int GetCurrentPTS() = 0;
     virtual bool MediaFinished() = 0;
+    virtual void SkipFrame() = 0;
     virtual int ReadFrame() = 0;
     virtual void write_frames() = 0;
     virtual ~IMedia()= default;

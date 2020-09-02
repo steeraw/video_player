@@ -24,6 +24,9 @@ static Uint8  *audio_chunk;
 static Uint32  audio_len;
 static Uint8  *audio_pos;
 
+
+
+
 class CFFmpegAudio : public IMedia
 {
     AVFormatContext	*pFormatCtx{};
@@ -58,6 +61,8 @@ class CFFmpegAudio : public IMedia
 
     int ReadFrame() override;
 
+    void SkipFrame() override;
+
     void init_audio(std::string url);
 
     void init_contexts();
@@ -69,6 +74,7 @@ class CFFmpegAudio : public IMedia
     attribute_deprecated void read_frames();
 
 public:
+
     CFFmpegAudio() = default;
     int GetCurrentPTS() override;
 

@@ -50,6 +50,7 @@ class CFFmpegVideo : public IMedia
 
     attribute_deprecated void read_current_frame(AVFrame *frame, AVPicture pict);
 
+    void SkipFrame() override;
 
     int ReadFrame() override;
 
@@ -63,6 +64,7 @@ class CFFmpegVideo : public IMedia
     attribute_deprecated void read_frames();
 
 public:
+
     int GetCurrentPTS() override;
 
     bool MediaFinished() override;

@@ -23,6 +23,8 @@ class CMediaPlayer
 
     void call_back_audio();
 
+    bool have_video();
+    bool have_audio();
 public:
     void call_back_pause();
 

@@ -11,6 +11,7 @@ void CFFmpegVideo::write_current_frame()
     avcodec_receive_frame(pCodecCtx, pFrame);
     pFrame->pts = av_rescale_q(packet->pts, pFormatCtx->streams[videoStream]->time_base, {1,1000});
 
+//    av_seek_frame(pFormatCtx, videoStream, pFrame->coded_picture_number, AVSEEK_FLAG_FRAME);
     while (vframe_buf.size() > 100)
     {
         std::this_thread::sleep_for(std::chrono::milliseconds(2));
@@ -119,6 +120,7 @@ void CFFmpegVideo::init_contexts()
         }
     if(videoStream==-1)
     {
+        no_media = true;
         printf("this is not a video");
         return;
     }
@@ -154,7 +156,11 @@ void CFFmpegVideo::init_contexts()
 void CFFmpegVideo::init_SDL()
 {
     if(videoStream==-1)
+    {
+
         return;
+    }
+
     flag = true;
     window = SDL_CreateWindow(
             "SDL2Test",
@@ -195,25 +201,36 @@ void CFFmpegVideo::init_SDL()
 }
 void CFFmpegVideo::write_frames()
 {
-status = STARTED;
-packet = av_packet_alloc();
-while(av_read_frame(pFormatCtx, packet)>=0)
-{
-// Is this a packet from the video stream?
-if(packet->stream_index==videoStream)
-{
-write_current_frame();
-}
-}
-av_packet_unref(packet);
-flag = false;
+    status = STARTED;
+    packet = av_packet_alloc();
+    pFormatCtx->streams[videoStream]->duration;
+    pFormatCtx->streams[videoStream]->nb_frames;
+    av_seek_frame(pFormatCtx, videoStream, FNUM, AVSEEK_FLAG_BACKWARD);
+//    if (avformat_seek_file(pFormatCtx, videoStream, (FNUM-1), (FNUM), (FNUM+1), AVSEEK_FLAG_FRAME))
+//        printf("e_r_r_o_r\n");
+    int t = 0;
+    while(av_read_frame(pFormatCtx, packet)>=0)
+    {
+        // Is this a packet from the video stream?
+        if(packet->stream_index==videoStream)
+        {
+
+//            pFormatCtx->streams[videoStream]->nb_frames;
+            write_current_frame();
+            t++;
+        }
+
+    }
+    av_packet_unref(packet);
+    printf("video: %d\n",t);
+    flag = false;
 }
 attribute_deprecated void CFFmpegVideo::read_frames()
 {
     //int PTS;
     long double msec;
     struct timespec time1, time2;
-//        clock_gettime(CLOCK_REALTIME, &time2);
+        clock_gettime(CLOCK_REALTIME, &time2);
     while (true)
     {
 //            while (VideoStop)
@@ -227,7 +244,7 @@ attribute_deprecated void CFFmpegVideo::read_frames()
             SDL_DestroyTexture(texture);
             SDL_DestroyRenderer(renderer);
             SDL_DestroyWindow(window);
-//                SDL_Quit();
+                SDL_Quit();
             mu.unlock();
             Vfinish = true;
             return;
@@ -243,12 +260,12 @@ attribute_deprecated void CFFmpegVideo::read_frames()
         mu.unlock();
 
         CurrentPTS = frame->pts;
-//            while (true) {
-//                clock_gettime(CLOCK_REALTIME, &time1);
-//                msec = 1000 * (time1.tv_sec - time2.tv_sec) + (time1.tv_nsec - time2.tv_nsec) / 1000000;
-//                if (CurrentPTS <= msec)
-//                    break;
-//            }
+            while (true) {
+                clock_gettime(CLOCK_REALTIME, &time1);
+                msec = 1000 * (time1.tv_sec - time2.tv_sec) + (time1.tv_nsec - time2.tv_nsec) / 1000000;
+                if (CurrentPTS <= msec)
+                    break;
+            }
         printf("Time from start video = %Lf\n", msec);
         AVPicture pict;
         pict.data[0] = yPlane;
@@ -301,20 +318,30 @@ void CFFmpegVideo::init(std::string url)
 }
 attribute_deprecated void CFFmpegVideo::play()
 {
-    if(videoStream==-1)
-        return;
     thread1 = std::thread(&CFFmpegVideo::write_frames, this);
     thread2 = std::thread(&CFFmpegVideo::read_frames, this);
-
+    thread1.join();
+    thread2.join();
 }
 void CFFmpegVideo::stop()
 {
-//        thread1.join();
-//        thread2.join();
     free(yPlane);
     free(uPlane);
     free(vPlane);
     avcodec_close(pCodecCtxOrig);
     avcodec_close(pCodecCtx);
     avformat_close_input(&pFormatCtx);
+}
+
+void CFFmpegVideo::SkipFrame()
+{
+    AVFrame *frame;
+    mu.lock();
+    if (vframe_buf.size() > 1)
+    {
+        vframe_buf.pop_front();
+        frame = vframe_buf.front();
+        CurrentPTS = frame->pts;
+    }
+    mu.unlock();
 }
