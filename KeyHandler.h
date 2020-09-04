@@ -25,6 +25,10 @@ class KeyHandler
     std::atomic_bool session{};
     bool MyKey = false;
     std::function<void()> Callback;
+    std::function<void()> CallbackAL;
+    std::function<void()> CallbackAR;
+    std::function<void()> CallbackVL;
+    std::function<void()> CallbackVR;
     std::thread thread;
     std::string MyHotKey;
     std::map<std::string, int> key_map = {
@@ -37,7 +41,12 @@ class KeyHandler
     };
 public:
     explicit KeyHandler(std::string Key);
+
     void SetCallback(std::function<void()> fn);
+    void SetCallbackAL(std::function<void()> fn);
+    void SetCallbackAR(std::function<void()> fn);
+    void SetCallbackVL(std::function<void()> fn);
+    void SetCallbackVR(std::function<void()> fn);
 
 
     void Init();

@@ -53,6 +53,14 @@ class CFFmpegAudio : public IMedia
     std::thread thread2{};
     int CurrentPTS{};
 
+    int Pts;
+    int t = 0;
+    float time1{};
+    float fps{};
+//    ts = av_samples_get_buffer_size(nullptr, 2, 960 ,pFormatCtx->streams[audioStream]->codec->sample_fmt, 0);
+    float ts{};
+    int tot{};
+
     static void fill_audio(void *udata,Uint8 *stream,int len);
 
     void write_current_frame();
@@ -60,6 +68,9 @@ class CFFmpegAudio : public IMedia
     attribute_deprecated void read_current_frame(AVFrame *frame);
 
     int ReadFrame() override;
+
+    void callbackL() override;
+    void callbackR() override;
 
     void SkipFrame() override;
 

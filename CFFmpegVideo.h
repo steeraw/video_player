@@ -45,12 +45,16 @@ class CFFmpegVideo : public IMedia
     std::thread thread1{};
     std::thread thread2{};
     int CurrentPTS{};
-
+    struct timespec time1, time2;
+    int t;
+    long double msec;
     void write_current_frame();
 
     attribute_deprecated void read_current_frame(AVFrame *frame, AVPicture pict);
 
     void SkipFrame() override;
+    void callbackL() override;
+    void callbackR() override;
 
     int ReadFrame() override;
 

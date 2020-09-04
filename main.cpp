@@ -923,21 +923,32 @@ int main(int argc, char *argv[])
 
     CConfig::getInstance().initConfig();
 
-//    char *url = CConfig::getInstance().getUrl();
+////    char *url = CConfig::getInstance().getUrl();
     std::string url = CConfig::getInstance().getUrl();
     std::string Hotkey = CConfig::getInstance().getHotkey();
     auto *media = new CMediaPlayer(url);
     auto *k1 = new KeyHandler(Hotkey);
     k1->SetCallback(std::bind(&CMediaPlayer::call_back_pause, media));
+////    k1->SetCallbackAL(std::bind(&IMedia::callbackL, media->getAudio()));
+////    k1->SetCallbackAR(std::bind(&IMedia::callbackR, media->getAudio()));
+    k1->SetCallbackVL(std::bind(&IMedia::callbackL, media->getVideo()));
+    k1->SetCallbackVR(std::bind(&IMedia::callbackR, media->getVideo()));
     k1->Init();
-//    k1->Check();
+////    k1->Check();
     media->Play();
     media->Stop();
     k1->Stop();
+//
+    delete media, k1;
 
-    delete media;
 
 
+//    IMedia *video = new CFFmpegVideo;
+//    k1->SetCallbackVL(std::bind(&IMedia::callbackL, video));
+//    k1->SetCallbackVR(std::bind(&IMedia::callbackR, video));
+//    video->init("videoplayback");
+//    video->play();
+//    video->stop();
 
 //auto *audio = new CFFmpegAudio;
 //audio->init("music.mp3");

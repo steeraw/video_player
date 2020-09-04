@@ -9,10 +9,10 @@ void CFFmpegVideo::write_current_frame()
     pFrame=av_frame_alloc();
     avcodec_send_packet(pCodecCtx, packet);
     avcodec_receive_frame(pCodecCtx, pFrame);
-    pFrame->pts = av_rescale_q(packet->pts, pFormatCtx->streams[videoStream]->time_base, {1,1000});
-
+///    pFrame->pts = av_rescale_q(packet->pts, pFormatCtx->streams[videoStream]->time_base, {1,1000});
+//    pFrame->pts = packet->pts;
 //    av_seek_frame(pFormatCtx, videoStream, pFrame->coded_picture_number, AVSEEK_FLAG_FRAME);
-    while (vframe_buf.size() > 100)
+    while (vframe_buf.size() > 30)
     {
         std::this_thread::sleep_for(std::chrono::milliseconds(2));
     }
@@ -203,21 +203,22 @@ void CFFmpegVideo::write_frames()
 {
     status = STARTED;
     packet = av_packet_alloc();
-    pFormatCtx->streams[videoStream]->duration;
-    pFormatCtx->streams[videoStream]->nb_frames;
-    av_seek_frame(pFormatCtx, videoStream, FNUM, AVSEEK_FLAG_BACKWARD);
+//    float time1 = (float)pFormatCtx->duration / 1000000;
+//    float fps = pFormatCtx->streams[videoStream]->nb_frames / time1;
+//    av_seek_frame(pFormatCtx, videoStream, fps*FNUM, AVSEEK_FLAG_BACKWARD);
 //    if (avformat_seek_file(pFormatCtx, videoStream, (FNUM-1), (FNUM), (FNUM+1), AVSEEK_FLAG_FRAME))
 //        printf("e_r_r_o_r\n");
-    int t = 0;
+    int c = 0;
+//    float ts = (float)pCodecCtx->time_base.den / fps;
     while(av_read_frame(pFormatCtx, packet)>=0)
     {
         // Is this a packet from the video stream?
         if(packet->stream_index==videoStream)
         {
-
 //            pFormatCtx->streams[videoStream]->nb_frames;
             write_current_frame();
-            t++;
+//            av_seek_frame(pFormatCtx, videoStream, , AVSEEK_FLAG_FRAME);
+            c++;
         }
 
     }
@@ -228,9 +229,9 @@ void CFFmpegVideo::write_frames()
 attribute_deprecated void CFFmpegVideo::read_frames()
 {
     //int PTS;
-    long double msec;
-    struct timespec time1, time2;
-        clock_gettime(CLOCK_REALTIME, &time2);
+
+
+    clock_gettime(CLOCK_REALTIME, &time2);
     while (true)
     {
 //            while (VideoStop)
@@ -259,10 +260,18 @@ attribute_deprecated void CFFmpegVideo::read_frames()
         vframe_buf.pop_front();
         mu.unlock();
 
-        CurrentPTS = frame->pts;
-            while (true) {
+        CurrentPTS = av_rescale_q(frame->pts, pFormatCtx->streams[videoStream]->time_base, {1,1000});
+            while (true)
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
                 clock_gettime(CLOCK_REALTIME, &time1);
                 msec = 1000 * (time1.tv_sec - time2.tv_sec) + (time1.tv_nsec - time2.tv_nsec) / 1000000;
+                msec += t;
+                if (CurrentPTS > msec + 500)
+                {
+                    av_frame_unref(frame);
+                    goto Continue;
+                }
                 if (CurrentPTS <= msec)
                     break;
             }
@@ -291,6 +300,8 @@ attribute_deprecated void CFFmpegVideo::read_frames()
             default:
                 break;
         }
+        Continue:
+        continue;
     }
 //        Vfinish = true;
 }
@@ -345,3 +356,36 @@ void CFFmpegVideo::SkipFrame()
     }
     mu.unlock();
 }
+
+void CFFmpegVideo::callbackL() {
+
+    mu.lock();
+    vframe_buf.clear();
+    mu.unlock();
+    int rew = 5000;
+    CurrentPTS -= rew;
+    t -= rew;
+
+//    packet->pts = av_rescale_q(packet->pts, pFormatCtx->streams[videoStream]->time_base, {1,1000});
+//    packet->pts -= rew;
+//    packet->pts;
+    av_seek_frame(pFormatCtx, videoStream, av_rescale_q(CurrentPTS, {1,1000},pFormatCtx->streams[videoStream]->time_base), AVSEEK_FLAG_BACKWARD);
+
+//
+//    packet->pts = av_rescale_q(CurrentPTS, {1,1000},pFormatCtx->streams[videoStream]->time_base);
+//    pFrame->pts = packet->pts;
+
+}
+
+void CFFmpegVideo::callbackR() {
+    mu.lock();
+    vframe_buf.clear();
+    mu.unlock();
+    int rew = 5000;
+    CurrentPTS += rew;
+    t += rew;
+    av_seek_frame(pFormatCtx, videoStream, av_rescale_q(CurrentPTS, {1,1000},pFormatCtx->streams[videoStream]->time_base), AVSEEK_FLAG_BACKWARD);
+//    pFrame->pts = CurrentPTS;
+//    packet->pts = av_rescale_q(CurrentPTS, {1,1000},pFormatCtx->streams[videoStream]->time_base);
+}
+

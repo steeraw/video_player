@@ -8,6 +8,22 @@ void KeyHandler::SetCallback(std::function<void()> fn)
 {
     Callback = std::move(fn);
 }
+void KeyHandler::SetCallbackAL(std::function<void()> fn)
+{
+    CallbackAL = std::move(fn);
+}
+void KeyHandler::SetCallbackAR(std::function<void()> fn)
+{
+    CallbackAR = std::move(fn);
+}
+void KeyHandler::SetCallbackVL(std::function<void()> fn)
+{
+    CallbackVL = std::move(fn);
+}
+void KeyHandler::SetCallbackVR(std::function<void()> fn)
+{
+    CallbackVR = std::move(fn);
+}
 void KeyHandler::Init()
 {
     if (key_map.find(MyHotKey) == key_map.end())//(!key_map[doc["Hotkey"].GetString()])//
@@ -34,7 +50,8 @@ void KeyHandler::Check()
         return;
     }
 
-    while(session) {
+    while(session)
+    {
 
         if (read(filefd, data, sizeof(event)) == -1 && errno == EAGAIN)
         {
@@ -68,16 +85,32 @@ void KeyHandler::Check()
                     MyKey = true;
                 }
             }
-            else {
-//                    cout << "Key Press " << event.code << endl;
+            else if(event.code == KEY_TAB && event.value ==1)
+            {
+                ////REWIND
+//                CallbackAL();
+                CallbackVL();
             }
+            else if(event.code == KEY_ENTER && event.value ==1)
+            {
+                ////REWIND
+//                CallbackAR();
+                CallbackVR();
+            }
+//            else
+//            {
+////                    cout << "Key Press " << event.code << endl;
+//            }
         }
     }
     close(filefd);
 }
 
-KeyHandler::KeyHandler(std::string Key) {
+KeyHandler::KeyHandler(std::string Key)
+{
     MyHotKey = Key;
 }
+
+
 
 

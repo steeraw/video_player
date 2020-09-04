@@ -43,6 +43,8 @@ public:
     virtual ~IMedia()= default;
     virtual MediaStatus GetStatus() = 0;
     virtual void SetStatus(MediaStatus mediaStatus) = 0;
+    virtual void callbackL() = 0;
+    virtual void callbackR() = 0;
 };
 
 

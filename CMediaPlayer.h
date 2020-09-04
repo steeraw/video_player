@@ -29,7 +29,8 @@ public:
     void call_back_pause();
 
 
-
+    IMedia* getAudio();
+    IMedia* getVideo();
     CMediaPlayer() = default;
     explicit CMediaPlayer(std::string url);
 
