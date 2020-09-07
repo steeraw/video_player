@@ -4,7 +4,13 @@
 
 #ifndef VIDEO_TEST2_IMEDIA_H
 #define VIDEO_TEST2_IMEDIA_H
-#define FNUM 3
+//10 seconds
+#define REWIND 1000000
+//0.3 seconds
+#define DELAY_SMALL 30000
+//9 seconds
+#define DELAY_BIG 900000
+
 
 #include <functional>
 #include <libavutil/attributes.h>
@@ -35,7 +41,7 @@ public:
     virtual void init(std::basic_string<char> url) = 0;
     attribute_deprecated virtual void play() = 0;
     virtual void stop() = 0;
-    virtual int GetCurrentPTS() = 0;
+    virtual long GetCurrentPTS() = 0;
     virtual bool MediaFinished() = 0;
     virtual void SkipFrame() = 0;
     virtual int ReadFrame() = 0;

@@ -25,61 +25,89 @@ void CMediaPlayer::call_back_pause()
 CMediaPlayer::CMediaPlayer(std::string url)
 {
     video = new CFFmpegVideo;
-//    audio = new CFFmpegAudio;
+    audio = new CFFmpegAudio;
 //        keyHandler = new KeyHandler;
     video->init(url);
-//    audio->init(url);
+    audio->init(url);
     video->SetCallback(std::bind(&CMediaPlayer::call_back_video, this));
-//    audio->SetCallback(std::bind(&CMediaPlayer::call_back_audio, this));
+    audio->SetCallback(std::bind(&CMediaPlayer::call_back_audio, this));
 //        keyHandler->SetCallback(std::bind(&CMediaPlayer::call_back_pause, this));
 }
 void CMediaPlayer::Play()
 {
-    video->play();
-//    if (!have_video())
-//    {
-//        audio->play();
-//    }
-//    if (!have_audio())
-//    {
-//        video->play();
-//    }
-//    else
-//    {
-//        th1 = std::thread(&IMedia::write_frames, video);
-//        th2 = std::thread(&IMedia::write_frames, audio);
-////        video->write_frames();
-////        audio->write_frames();
-//        SDL_PauseAudio(0);
-//        while (video->GetStatus() != IMedia::FINISHED || audio->GetStatus() != IMedia::FINISHED)///!video->MediaFinished() && !audio->MediaFinished()
-//        {
-////            Pause = true;
-//            while(Pause)
-//            {
-//                std::this_thread::sleep_for(std::chrono::milliseconds(2));
-////                Pause = false;
-//            }
-//            if (audio->GetStatus() != IMedia::FINISHED)
-//                audio->ReadFrame();
-//            if (video->GetStatus() != IMedia::FINISHED)
-//            {
-//                while (video->GetCurrentPTS() + 50 < audio->GetCurrentPTS())
+//    video->play();
+    int i = 0;
+    if (!have_video())
+    {
+        audio->play();
+    }
+    if (!have_audio())
+    {
+        video->play();
+    }
+    else
+    {
+        th1 = std::thread(&IMedia::write_frames, video);
+        th2 = std::thread(&IMedia::write_frames, audio);
+//        video->write_frames();
+//        audio->write_frames();
+        SDL_PauseAudio(0);
+        while (video->GetStatus() != IMedia::FINISHED || audio->GetStatus() != IMedia::FINISHED)///!video->MediaFinished() && !audio->MediaFinished()
+        {
+//            Pause = true;
+            while(Pause)
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(2));
+//                Pause = false;
+            }
+
+            if (audio->GetStatus() != IMedia::FINISHED)
+            {
+
+
+
+//                while (video->GetCurrentPTS() + 30000 < audio->GetCurrentPTS() && i < 10)
+//                {
+//                    video->SkipFrame();
+//                    i++;
+//                }
+//                i = 0;
+
+//                if (video->GetCurrentPTS() + 30000 < audio->GetCurrentPTS())
 //                {
 //                    video->SkipFrame();
 //                }
-//                if (video->GetCurrentPTS() <= audio->GetCurrentPTS())
-//                    video->ReadFrame();
-//
-//            }
-//
-//
-//        }
-////        SDL_DestroyTexture(texture);
-////        SDL_DestroyRenderer(renderer);
-////        SDL_DestroyWindow(window);
-//        SDL_CloseAudio();//Close SDL
-//        SDL_Quit();
-//    }
+
+                audio->ReadFrame();
+
+                while (video->GetCurrentPTS() + DELAY_SMALL < audio->GetCurrentPTS())
+                {
+                    video->SkipFrame();
+                    if (video->GetCurrentPTS() + DELAY_BIG < audio->GetCurrentPTS())
+                    {
+                        audio->SkipFrame();
+                        break;
+                    }
+
+
+                }
+
+            }
+            if (video->GetStatus() != IMedia::FINISHED)
+            {
+
+                if (video->GetCurrentPTS() <= audio->GetCurrentPTS())
+                {
+                    video->ReadFrame();
+                }
+            }
+        }
+//        SDL_DestroyTexture(texture);
+//        SDL_DestroyRenderer(renderer);
+//        SDL_DestroyWindow(window);
+        SDL_CloseAudio();//Close SDL
+        SDL_Quit();
+    }
 
 
 
@@ -88,18 +116,18 @@ void CMediaPlayer::Play()
 }
 void CMediaPlayer::Stop()
 {
-//    if (have_audio() && have_video())
-//    {
-//        th1.join();
-//        th2.join();
-//    }
-//
-//
-//    if (have_video())
-//        video->stop();
-//    if (have_audio())
-//        audio->stop();
-    video->stop();
+    if (have_audio() && have_video())
+    {
+        th1.join();
+        th2.join();
+    }
+
+
+    if (have_video())
+        video->stop();
+    if (have_audio())
+        audio->stop();
+//    video->stop();
 }
 
 bool CMediaPlayer::have_video() {

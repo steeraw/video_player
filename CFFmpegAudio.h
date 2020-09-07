@@ -51,13 +51,12 @@ class CFFmpegAudio : public IMedia
     AVCodecParameters *pParam{};
     std::thread thread1{};
     std::thread thread2{};
-    int CurrentPTS{};
+    long CurrentPTS{};
 
     int Pts;
     int t = 0;
     float time1{};
     float fps{};
-//    ts = av_samples_get_buffer_size(nullptr, 2, 960 ,pFormatCtx->streams[audioStream]->codec->sample_fmt, 0);
     float ts{};
     int tot{};
 
@@ -87,7 +86,7 @@ class CFFmpegAudio : public IMedia
 public:
 
     CFFmpegAudio() = default;
-    int GetCurrentPTS() override;
+    long GetCurrentPTS() override;
 
     bool MediaFinished() override;
 

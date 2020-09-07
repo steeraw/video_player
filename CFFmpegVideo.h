@@ -44,10 +44,10 @@ class CFFmpegVideo : public IMedia
     bool flag{}, Vfinish{};
     std::thread thread1{};
     std::thread thread2{};
-    int CurrentPTS{};
-    struct timespec time1, time2;
-    int t;
-    long double msec;
+    long CurrentPTS{};
+    struct timespec time1{}, time2{};
+    int t{};
+    long double msec{};
     void write_current_frame();
 
     attribute_deprecated void read_current_frame(AVFrame *frame, AVPicture pict);
@@ -69,7 +69,7 @@ class CFFmpegVideo : public IMedia
 
 public:
 
-    int GetCurrentPTS() override;
+    long GetCurrentPTS() override;
 
     bool MediaFinished() override;
 

@@ -55,7 +55,6 @@ void KeyHandler::Check()
 
         if (read(filefd, data, sizeof(event)) == -1 && errno == EAGAIN)
         {
-
             continue;
         } else if (read(filefd, data, sizeof(event)) == -1 && errno != EAGAIN)
         {
@@ -88,14 +87,18 @@ void KeyHandler::Check()
             else if(event.code == KEY_TAB && event.value ==1)
             {
                 ////REWIND
-//                CallbackAL();
+
                 CallbackVL();
+                CallbackAL();
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
             }
             else if(event.code == KEY_ENTER && event.value ==1)
             {
                 ////REWIND
-//                CallbackAR();
+
                 CallbackVR();
+                CallbackAR();
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
             }
 //            else
 //            {

@@ -61,7 +61,7 @@ int CFFmpegVideo::ReadFrame()
     frame = vframe_buf.front();
     vframe_buf.pop_front();
 
-    CurrentPTS = frame->pts;
+    CurrentPTS = av_rescale_q(frame->pts, pFormatCtx->streams[videoStream]->time_base, {1,100000});
     mu.unlock();
     AVPicture pict;
     pict.data[0] = yPlane;
@@ -203,27 +203,19 @@ void CFFmpegVideo::write_frames()
 {
     status = STARTED;
     packet = av_packet_alloc();
-//    float time1 = (float)pFormatCtx->duration / 1000000;
-//    float fps = pFormatCtx->streams[videoStream]->nb_frames / time1;
-//    av_seek_frame(pFormatCtx, videoStream, fps*FNUM, AVSEEK_FLAG_BACKWARD);
-//    if (avformat_seek_file(pFormatCtx, videoStream, (FNUM-1), (FNUM), (FNUM+1), AVSEEK_FLAG_FRAME))
-//        printf("e_r_r_o_r\n");
-    int c = 0;
-//    float ts = (float)pCodecCtx->time_base.den / fps;
+//    int c = 0;
     while(av_read_frame(pFormatCtx, packet)>=0)
     {
         // Is this a packet from the video stream?
         if(packet->stream_index==videoStream)
         {
-//            pFormatCtx->streams[videoStream]->nb_frames;
             write_current_frame();
-//            av_seek_frame(pFormatCtx, videoStream, , AVSEEK_FLAG_FRAME);
-            c++;
+//            c++;
         }
 
     }
     av_packet_unref(packet);
-    printf("video: %d\n",t);
+//    printf("video: %d\n",t);
     flag = false;
 }
 attribute_deprecated void CFFmpegVideo::read_frames()
@@ -305,7 +297,7 @@ attribute_deprecated void CFFmpegVideo::read_frames()
     }
 //        Vfinish = true;
 }
-int CFFmpegVideo::GetCurrentPTS()
+long CFFmpegVideo::GetCurrentPTS()
 {
     return CurrentPTS;
 }
@@ -350,42 +342,43 @@ void CFFmpegVideo::SkipFrame()
     mu.lock();
     if (vframe_buf.size() > 1)
     {
+        av_frame_unref(vframe_buf.front());
         vframe_buf.pop_front();
         frame = vframe_buf.front();
-        CurrentPTS = frame->pts;
+        CurrentPTS = av_rescale_q(frame->pts, pFormatCtx->streams[videoStream]->time_base, {1,100000});
     }
     mu.unlock();
+
 }
 
 void CFFmpegVideo::callbackL() {
 
     mu.lock();
+    for (auto it : vframe_buf)
+    {
+        av_frame_unref(it);
+    }
     vframe_buf.clear();
     mu.unlock();
-    int rew = 5000;
-    CurrentPTS -= rew;
-    t -= rew;
-
-//    packet->pts = av_rescale_q(packet->pts, pFormatCtx->streams[videoStream]->time_base, {1,1000});
-//    packet->pts -= rew;
-//    packet->pts;
-    av_seek_frame(pFormatCtx, videoStream, av_rescale_q(CurrentPTS, {1,1000},pFormatCtx->streams[videoStream]->time_base), AVSEEK_FLAG_BACKWARD);
-
-//
-//    packet->pts = av_rescale_q(CurrentPTS, {1,1000},pFormatCtx->streams[videoStream]->time_base);
-//    pFrame->pts = packet->pts;
+//    int vrew = 1000000;
+    CurrentPTS -= REWIND;
+//    t -= rew;
+    av_seek_frame(pFormatCtx, videoStream, av_rescale_q(CurrentPTS, {1,100000},pFormatCtx->streams[videoStream]->time_base), AVSEEK_FLAG_BACKWARD);
 
 }
 
 void CFFmpegVideo::callbackR() {
     mu.lock();
+    for (auto it : vframe_buf)
+    {
+        av_frame_unref(it);
+    }
     vframe_buf.clear();
     mu.unlock();
-    int rew = 5000;
-    CurrentPTS += rew;
-    t += rew;
-    av_seek_frame(pFormatCtx, videoStream, av_rescale_q(CurrentPTS, {1,1000},pFormatCtx->streams[videoStream]->time_base), AVSEEK_FLAG_BACKWARD);
-//    pFrame->pts = CurrentPTS;
-//    packet->pts = av_rescale_q(CurrentPTS, {1,1000},pFormatCtx->streams[videoStream]->time_base);
+//    int vrew = 1000000;
+    CurrentPTS += REWIND;
+//    t += rew;
+    av_seek_frame(pFormatCtx, videoStream, av_rescale_q(CurrentPTS, {1,100000},pFormatCtx->streams[videoStream]->time_base), AVSEEK_FLAG_BACKWARD);
+
 }
 

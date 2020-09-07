@@ -929,8 +929,8 @@ int main(int argc, char *argv[])
     auto *media = new CMediaPlayer(url);
     auto *k1 = new KeyHandler(Hotkey);
     k1->SetCallback(std::bind(&CMediaPlayer::call_back_pause, media));
-////    k1->SetCallbackAL(std::bind(&IMedia::callbackL, media->getAudio()));
-////    k1->SetCallbackAR(std::bind(&IMedia::callbackR, media->getAudio()));
+    k1->SetCallbackAL(std::bind(&IMedia::callbackL, media->getAudio()));
+    k1->SetCallbackAR(std::bind(&IMedia::callbackR, media->getAudio()));
     k1->SetCallbackVL(std::bind(&IMedia::callbackL, media->getVideo()));
     k1->SetCallbackVR(std::bind(&IMedia::callbackR, media->getVideo()));
     k1->Init();

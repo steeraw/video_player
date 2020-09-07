@@ -21,8 +21,8 @@ void CFFmpegAudio::write_current_frame()
         pFrame=av_frame_alloc();
         avcodec_send_packet(pCodecCtx, packet);
         avcodec_receive_frame(pCodecCtx, pFrame);
-        pFrame->pts = av_rescale_q(packet->pts, pFormatCtx->streams[audioStream]->time_base, {1,1000});
-        Pts = pFrame->pts;
+//        pFrame->pts = av_rescale_q(packet->pts, pFormatCtx->streams[audioStream]->time_base, {1,1000});
+//        Pts = pFrame->pts;
 //        av_seek_frame(pFormatCtx, audioStream, 0, AVSEEK_FLAG_FRAME);
 //        pFrame->coded_picture_number
         while (aframe_buf.size() > 100)
@@ -39,7 +39,7 @@ void CFFmpegAudio::write_current_frame()
 
 void CFFmpegAudio::read_current_frame(AVFrame *frame)
 {
-    CurrentPTS = frame->pts;
+    CurrentPTS = av_rescale_q(frame->pts, pFormatCtx->streams[audioStream]->time_base, {1,100000});
     swr_convert(au_convert_ctx,&out_buffer, MAX_AUDIO_FRAME_SIZE,(const uint8_t **)frame->data , frame->nb_samples);
 
     while(audio_len>0)//Wait until finish
@@ -71,7 +71,7 @@ int CFFmpegAudio::ReadFrame()
     frame = aframe_buf.front();
     aframe_buf.pop_front();
     mu.unlock();
-    CurrentPTS = frame->pts;
+    CurrentPTS = av_rescale_q(frame->pts, pFormatCtx->streams[audioStream]->time_base, {1,100000});
     swr_convert(au_convert_ctx,&out_buffer, MAX_AUDIO_FRAME_SIZE,(const uint8_t **)frame->data , frame->nb_samples);
 
     while(audio_len>0)//Wait until finish
@@ -87,13 +87,28 @@ int CFFmpegAudio::ReadFrame()
 
 void CFFmpegAudio::SkipFrame()
 {
+//    AVFrame *frame;
+//    mu.lock();
+//    if (!aframe_buf.empty())
+//    {
+//        aframe_buf.pop_front();
+//        while (aframe_buf.empty())
+//        {
+//            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+//        }
+//        frame = aframe_buf.front();
+//        CurrentPTS = av_rescale_q(frame->pts, pFormatCtx->streams[audioStream]->time_base, {1,100000});
+//    }
+//    mu.unlock();
+    AVFrame *frame;
     mu.lock();
-    if (aframe_buf.empty())
+    if (aframe_buf.size() > 1)
     {
-        mu.unlock();
-        return;
+        av_frame_unref(aframe_buf.front());
+        aframe_buf.pop_front();
+        frame = aframe_buf.front();
+        CurrentPTS = av_rescale_q(frame->pts, pFormatCtx->streams[audioStream]->time_base, {1,100000});
     }
-    aframe_buf.pop_front();
     mu.unlock();
 }
 
@@ -145,8 +160,8 @@ void CFFmpegAudio::init_contexts()
     if (avcodec_open2(pCodecCtx, pCodec, nullptr) < 0)
         return;
 
-    packet=(AVPacket *)av_malloc(sizeof(AVPacket));////////////////////////OPTIONAL
-    av_init_packet(packet);////////////////////////////////////////////////OPTIONAL
+    packet=(AVPacket *)av_malloc(sizeof(AVPacket));////////////////////////OPTIONAL?
+    av_init_packet(packet);////////////////////////////////////////////////OPTIONAL?
 
 //    int out_buffer_size=av_samples_get_buffer_size(NULL,out_channels ,out_nb_samples,out_sample_fmt, 1);
     out_buffer_size = av_samples_get_buffer_size(nullptr, 2, pCodecCtx->frame_size, AV_SAMPLE_FMT_S16, 1);//AV_SAMPLE_FMT_S16
@@ -197,29 +212,14 @@ void CFFmpegAudio::write_frames()
     t = 0;
     time1 = (float)pFormatCtx->duration / 1000000;
     fps = pFormatCtx->streams[audioStream]->nb_frames / time1;
-//    ts = av_samples_get_buffer_size(nullptr, 2, 960 ,pFormatCtx->streams[audioStream]->codec->sample_fmt, 0);
+
     ts = (float)pCodecCtx->time_base.den / fps;
-    tot = fps*ts*FNUM;
-
-
-//    av_seek_frame(pFormatCtx, audioStream, tot, AVSEEK_FLAG_BACKWARD);
-//    pFormatCtx->duration;
-//    if (avformat_seek_file(pFormatCtx, audioStream, 0, FNUM*2048, FNUM*2049, AVSEEK_FLAG_FRAME))
-//        printf("e-r-r-o-r\n");
-
-//    t = (double)pCodecCtx->time_base.num / (double)pCodecCtx->time_base.den;
     float sec = 0.0;
     while (av_read_frame(pFormatCtx, packet) >= 0)
     {
-//        sec = ((float)packet->pts / 1024) / fps;
-
         if (packet->stream_index == audioStream)
         {
-
-
-
             write_current_frame();
-//            av_seek_frame(pFormatCtx, audioStream, packet->pts+ts, AVSEEK_FLAG_FRAME);
             t++;
         }
         av_packet_unref(packet);
@@ -261,7 +261,7 @@ void CFFmpegAudio::read_frames()
     SDL_Quit();
 }
 
-int CFFmpegAudio::GetCurrentPTS()
+long CFFmpegAudio::GetCurrentPTS()
 {
     return CurrentPTS;
 }
@@ -308,20 +308,31 @@ void CFFmpegAudio::SetStatus(IMedia::MediaStatus status)
 
 void CFFmpegAudio::callbackL()
 {
-    CurrentPTS -= 1000;
-    av_seek_frame(pFormatCtx, audioStream, ((double)(CurrentPTS)*fps*ts/1000), AVSEEK_FLAG_BACKWARD);
     mu.lock();
+    for (auto it : aframe_buf)
+    {
+        av_frame_unref(it);
+    }
     aframe_buf.clear();
     mu.unlock();
+//    int rew = 1000000;
+    CurrentPTS -= REWIND;
+    av_seek_frame(pFormatCtx, audioStream, av_rescale_q(CurrentPTS, {1,100000},pFormatCtx->streams[audioStream]->time_base), AVSEEK_FLAG_BACKWARD);
+
 }
 
 void CFFmpegAudio::callbackR()
 {
     mu.lock();
+    for (auto it : aframe_buf)
+    {
+        av_frame_unref(it);
+    }
     aframe_buf.clear();
     mu.unlock();
-    CurrentPTS += 1000;
-    av_seek_frame(pFormatCtx, audioStream, ((double)(CurrentPTS)*fps*ts/1000), 0);
+//    int rew = 1000000;
+    CurrentPTS += REWIND;
+    av_seek_frame(pFormatCtx, audioStream, av_rescale_q(CurrentPTS, {1,100000},pFormatCtx->streams[audioStream]->time_base), AVSEEK_FLAG_BACKWARD);
 }
 
 
