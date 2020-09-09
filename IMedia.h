@@ -43,7 +43,7 @@ public:
     virtual void stop() = 0;
     virtual long GetCurrentPTS() = 0;
     virtual bool MediaFinished() = 0;
-    virtual void SkipFrame() = 0;
+    virtual int SkipFrame() = 0;
     virtual int ReadFrame() = 0;
     virtual void write_frames() = 0;
     virtual ~IMedia()= default;
@@ -52,7 +52,7 @@ public:
     virtual void callbackL() = 0;
     virtual void callbackR() = 0;
     virtual long GetAudioPTS() = 0;
-    virtual void SkipAudioFrame() = 0;
+    virtual int SkipAudioFrame() = 0;
 
     virtual void ReadAudioFrame() = 0;
 };

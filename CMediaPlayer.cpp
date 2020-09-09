@@ -69,13 +69,20 @@ void CMediaPlayer::Play()
 //            {
 //                video->SkipAudioFrame();
 //            }
+
+            int y = 0;
             while (video->GetCurrentPTS() + DELAY_SMALL < video->GetAudioPTS())
             {
-                video->SkipFrame();
+                if (video->SkipFrame() != 0)
+                    break;
+                y++;
+//                video->ReadFrame();
             }
+            y = 0;
             while (video->GetCurrentPTS() > video->GetAudioPTS() + DELAY_SMALL)
             {
-                video->SkipFrame();
+                if (video->SkipFrame() != 0)
+                    break;
             }
 
 

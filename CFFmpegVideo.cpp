@@ -2,6 +2,7 @@
 // Created by root on 19.08.20.
 //
 
+#include <iostream>
 #include "CFFmpegVideo.h"
 
 
@@ -300,56 +301,56 @@ void CFFmpegVideo::write_frames()
     packet = av_packet_alloc();
 //    int c = 0;
 
-//    int x = 0;
-//    while (x >= 0)
-//    {
-////        mu_fmt_ctx.lock();
-//        x = av_read_frame(pFormatCtx, packet);
-//        if (x >= 0 && !ctx_flag)
-//        {
-//            if(packet->stream_index==videoStream)
-//            {
-//                write_current_frame();
-//            }
-//            if (packet->stream_index == audioStream)
-//            {
-//                write_audio_frame();
-//            }
-//            av_packet_unref(packet);
-//        }
-////        mu_fmt_ctx.unlock();
-////        std::this_thread::sleep_for(std::chrono::milliseconds(20));
-////        usleep(10);
-//    }
-
-
-
-
-
-//    mu_fmt_ctx.lock();
-    while(av_read_frame(pFormatCtx, packet)>=0)
+    int x = 0;
+    while (x >= 0)
     {
-
-//        mu_fmt_ctx.unlock();
-        // Is this a packet from the video stream?
-        if(packet->stream_index==videoStream)
+        mu_fmt_ctx.lock();
+        x = av_read_frame(pFormatCtx, packet);
+        if (x >= 0 && !ctx_flag)
         {
-            write_current_frame();
-//            c++;
+            if(packet->stream_index==videoStream)
+            {
+                write_current_frame();
+            }
+            if (packet->stream_index == audioStream)
+            {
+                write_audio_frame();
+            }
+            av_packet_unref(packet);
         }
-
-        if (packet->stream_index == audioStream)
-        {
-            write_audio_frame();
-
-        }
-
-        av_packet_unref(packet);
-//        mu_fmt_ctx.lock();
+        mu_fmt_ctx.unlock();
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+//        usleep(10);
     }
-//    mu_fmt_ctx.unlock();
-    av_packet_unref(packet);
-    printf("video: %d\n",t);
+
+
+
+
+
+////    mu_fmt_ctx.lock();
+//    while(av_read_frame(pFormatCtx, packet)>=0)
+//    {
+//
+////        mu_fmt_ctx.unlock();
+//        // Is this a packet from the video stream?
+//        if(packet->stream_index==videoStream)
+//        {
+//            write_current_frame();
+////            c++;
+//        }
+//
+//        if (packet->stream_index == audioStream)
+//        {
+//            write_audio_frame();
+//
+//        }
+//
+//        av_packet_unref(packet);
+////        mu_fmt_ctx.lock();
+//    }
+////    mu_fmt_ctx.unlock();
+//    av_packet_unref(packet);
+//    printf("video: %d\n",t);
 
 
 
@@ -497,38 +498,51 @@ void CFFmpegVideo::stop()
     avformat_close_input(&pFormatCtx);
 }
 
-void CFFmpegVideo::SkipFrame()
+int CFFmpegVideo::SkipFrame()
 {
-    AVFrame *frame;
-    mu.lock();
-    if (vframe_buf.size() > 1)
+//    if (vframe_buf.size() > 1)
+//    {
+    if (!vframe_buf.empty())
     {
-        av_frame_unref(vframe_buf.front());
-        vframe_buf.pop_front();
+        AVFrame *frame;
+        mu.lock();
         frame = vframe_buf.front();
         CurrentPTS = av_rescale_q(frame->pts, pFormatCtx->streams[videoStream]->time_base, {1,100000});
+        av_frame_unref(vframe_buf.front());
+        vframe_buf.pop_front();
+
+
+
+        mu.unlock();
+        return 0;
     }
-    mu.unlock();
+    return 1;
+
+//    }
 }
 
-void CFFmpegVideo::SkipAudioFrame()
+int CFFmpegVideo::SkipAudioFrame()
 {
-    AVFrame *frame;
-    mu.lock();
-    if (aframe_buf.size() > 1)
+    if (!aframe_buf.empty())
     {
-        av_frame_unref(aframe_buf.front());
-        aframe_buf.pop_front();
+        AVFrame *frame;
+        mu.lock();
         frame = aframe_buf.front();
         AudioPTS = av_rescale_q(frame->pts, pFormatCtx->streams[audioStream]->time_base, {1,100000});
+        av_frame_unref(vframe_buf.front());
+        aframe_buf.pop_front();
+        mu.unlock();
+        return 0;
     }
-    mu.unlock();
+    return 1;
 }
 
 
 void CFFmpegVideo::callbackL() {
-
+    mu_fmt_ctx.lock();
     mu.lock();
+    struct timespec time_bb, time_aa;
+    clock_gettime(CLOCK_REALTIME, &time_bb);
     for (auto it : vframe_buf)
     {
         av_frame_unref(it);
@@ -539,21 +553,49 @@ void CFFmpegVideo::callbackL() {
     }
     vframe_buf.clear();
     aframe_buf.clear();
-    mu.unlock();
 //    int vrew = 1000000;
     CurrentPTS -= REWIND;
     AudioPTS -= REWIND;
 //    t -= rew;
-//    av_seek_frame(pFormatCtx, videoStream, av_rescale_q(CurrentPTS>AudioPTS?AudioPTS:CurrentPTS, {1,100000},pFormatCtx->streams[videoStream]->time_base), AVSEEK_FLAG_BACKWARD);
+
+
+
     ctx_flag = true;
-//    mu_fmt_ctx.lock();
-    av_seek_frame(pFormatCtx, audioStream, av_rescale_q(AudioPTS, {1,100000},pFormatCtx->streams[audioStream]->time_base), AVSEEK_FLAG_BACKWARD);
-//    mu_fmt_ctx.unlock();
+
+
+
+//    avformat_seek_file(pFormatCtx,
+//                       audioStream,
+//                       0,
+//                       av_rescale_q(AudioPTS, {1,100000},pFormatCtx->streams[audioStream]->time_base),
+//                       av_rescale_q(AudioPTS, {1,100000},pFormatCtx->streams[audioStream]->time_base),
+//                       0);
+    av_seek_frame(pFormatCtx,
+                  videoStream,
+                  av_rescale_q(CurrentPTS, {1,100000},
+                               pFormatCtx->streams[videoStream]->time_base),
+                               0);
+//    av_seek_frame(pFormatCtx, audioStream, av_rescale_q(AudioPTS, {1,100000},pFormatCtx->streams[audioStream]->time_base),   AVSEEK_FLAG_BACKWARD);
+//    avcodec_flush_buffers(pCodecCtx);
+//    avcodec_flush_buffers(aCodecCtx);
+
+    clock_gettime(CLOCK_REALTIME, &time_aa);
+
+
+//    printf("Time to seek back: %ld", 1000 * (time_a.tv_sec - time_b.tv_sec) + (time_a.tv_nsec - time_b.tv_nsec) / 1000000);
+    mu.unlock();
+    mu_fmt_ctx.unlock();
     ctx_flag = false;
+    long time = 100000 * (time_aa.tv_sec - time_bb.tv_sec) + ((time_aa.tv_nsec - time_bb.tv_nsec) / 10000);
+//    printf("Time to seek back: %ld", time);
+    std::cout << "Time to seek back:" << time << std:: endl;
 }
 
 void CFFmpegVideo::callbackR() {
+    mu_fmt_ctx.lock();
     mu.lock();
+    struct timespec time_b, time_a;
+    clock_gettime(CLOCK_REALTIME, &time_b);
     for (auto it : vframe_buf)
     {
         av_frame_unref(it);
@@ -564,25 +606,50 @@ void CFFmpegVideo::callbackR() {
     }
     vframe_buf.clear();
     aframe_buf.clear();
-    mu.unlock();
+
 //    int vrew = 1000000;
     CurrentPTS += REWIND;
     AudioPTS += REWIND;
 //    t -= rew;
 
-//    mu_fmt_ctx.lock();
-    ctx_flag = true;
-    av_seek_frame(pFormatCtx, audioStream, av_rescale_q(AudioPTS, {1,100000},pFormatCtx->streams[audioStream]->time_base), AVSEEK_FLAG_BACKWARD);
-    ctx_flag = false;
-//    mu_fmt_ctx.unlock();
 
+//    ctx_flag = true;
+//    avformat_seek_file(pFormatCtx,
+//                       audioStream,
+//                       0,
+//                       av_rescale_q(AudioPTS, {1,100000},pFormatCtx->streams[audioStream]->time_base),
+//                       av_rescale_q(AudioPTS, {1,100000},pFormatCtx->streams[audioStream]->time_base),
+//                       0);
+
+
+
+    av_seek_frame(pFormatCtx,
+                  videoStream,
+                  av_rescale_q(CurrentPTS, {1,100000},
+                               pFormatCtx->streams[videoStream]->time_base),
+                               AVSEEK_FLAG_BACKWARD);
+//    av_seek_frame(pFormatCtx, audioStream, av_rescale_q(AudioPTS, {1,100000},pFormatCtx->streams[audioStream]->time_base),  AVSEEK_FLAG_BACKWARD);
+//    avcodec_flush_buffers(pCodecCtx);
+//    avcodec_flush_buffers(aCodecCtx);
+
+//    ctx_flag = false;
+
+    clock_gettime(CLOCK_REALTIME, &time_a);
+    mu.unlock();
+    mu_fmt_ctx.unlock();
+    long time = 100000 * (time_a.tv_sec - time_b.tv_sec) + ((time_a.tv_nsec - time_b.tv_nsec) / 10000);
+
+    std::cout << "Time to seek front:" << time << std:: endl;
+//    printf("Time to seek front: %ld", time);
     //    av_seek_frame(pFormatCtx, videoStream, av_rescale_q(CurrentPTS, {1,100000},pFormatCtx->streams[videoStream]->time_base), AVSEEK_FLAG_BACKWARD);
 
 }
 
 void CFFmpegVideo::write_audio_frame() {
+
     aFrame=av_frame_alloc();
     avcodec_send_packet(aCodecCtx, packet);
+
     avcodec_receive_frame(aCodecCtx, aFrame);
 //        pFrame->pts = av_rescale_q(packet->pts, pFormatCtx->streams[audioStream]->time_base, {1,1000});
 //        Pts = pFrame->pts;

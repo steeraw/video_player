@@ -129,8 +129,8 @@ public:
 
     int ReadFrame() override;
 
-    void SkipFrame() override;
-    void SkipAudioFrame() override;
+    int SkipFrame() override;
+    int SkipAudioFrame() override;
 
     void ReadAudioFrame() override;
 };
