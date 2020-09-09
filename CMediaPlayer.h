@@ -9,7 +9,7 @@
 //#include <thread>
 #include "IMedia.h"
 #include "CFFmpegVideo.h"
-#include "CFFmpegAudio.h"
+
 
 class CMediaPlayer
 {

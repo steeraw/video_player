@@ -4,6 +4,20 @@
 
 #include "CFFmpegVideo.h"
 
+
+void CFFmpegVideo::fill_audio(void *udata, Uint8 *stream, int len)
+{
+    //SDL 2.0
+    SDL_memset(stream, 0, len);
+    if(audio_len==0)
+        return;
+    len=(len>(int)audio_len?(int)audio_len:len);	/*  Mix  as  much  data  as  possible  */
+    SDL_MixAudio(stream,audio_pos,len,SDL_MIX_MAXVOLUME);
+    audio_pos += len;
+    audio_len -= len;
+}
+
+
 void CFFmpegVideo::write_current_frame()
 {
     pFrame=av_frame_alloc();
@@ -12,7 +26,7 @@ void CFFmpegVideo::write_current_frame()
 ///    pFrame->pts = av_rescale_q(packet->pts, pFormatCtx->streams[videoStream]->time_base, {1,1000});
 //    pFrame->pts = packet->pts;
 //    av_seek_frame(pFormatCtx, videoStream, pFrame->coded_picture_number, AVSEEK_FLAG_FRAME);
-    while (vframe_buf.size() > 30)
+    while (vframe_buf.size() > 200)
     {
         std::this_thread::sleep_for(std::chrono::milliseconds(2));
     }
@@ -118,12 +132,61 @@ void CFFmpegVideo::init_contexts()
             videoStream=i;
             break;
         }
+    audioStream = -1;
+    for (i = 0; i < pFormatCtx->nb_streams; i++)
+        if (pFormatCtx->streams[i]->codec->codec_type == AVMEDIA_TYPE_AUDIO) {
+            audioStream = i;
+            break;
+        }
+
+    if (audioStream == -1)
+    {
+        printf("No Audio\n");
+        no_media = true;
+        return;
+    }
+
     if(videoStream==-1)
     {
         no_media = true;
         printf("this is not a video");
         return;
     }
+
+
+
+    aCodecCtxOrig = pFormatCtx->streams[audioStream]->codec;
+    aCodec = avcodec_find_decoder(aCodecCtxOrig->codec_id);
+    if (aCodec == nullptr) {
+        fprintf(stderr, "Unsupported codec!\n");
+        return; // Codec not found
+    }
+    aCodecCtx = avcodec_alloc_context3(aCodec);
+    aParam = avcodec_parameters_alloc();
+    avcodec_parameters_from_context(aParam, aCodecCtxOrig);
+    avcodec_parameters_to_context(aCodecCtx, aParam);
+    avcodec_parameters_free(&aParam);
+    if (avcodec_open2(aCodecCtx, aCodec, nullptr) < 0)
+        return;
+
+    packet=(AVPacket *)av_malloc(sizeof(AVPacket));////////////////////////OPTIONAL?
+    av_init_packet(packet);////////////////////////////////////////////////OPTIONAL?
+
+//    int out_buffer_size=av_samples_get_buffer_size(NULL,out_channels ,out_nb_samples,out_sample_fmt, 1);
+    out_buffer_size = av_samples_get_buffer_size(nullptr, 2, aCodecCtx->frame_size, AV_SAMPLE_FMT_S16, 1);//AV_SAMPLE_FMT_S16
+
+
+    out_buffer=(uint8_t *)av_malloc(MAX_AUDIO_FRAME_SIZE*2);
+//    pFrame=av_frame_alloc();
+
+    //FIX:Some Codec's Context Information is missing
+    in_channel_layout=av_get_default_channel_layout(aCodecCtx->channels);
+
+
+
+
+
+
 
 
     pCodecCtxOrig = pFormatCtx->streams[videoStream]->codec;
@@ -198,14 +261,76 @@ void CFFmpegVideo::init_SDL()
         exit(1);
     }
     uvPitch = pCodecCtx->width / 2;
+
+
+
+
+
+
+
+
+
+
+    if(SDL_Init(SDL_INIT_AUDIO))
+    {
+        printf( "Could not initialize SDL - %s\n", SDL_GetError());
+        return;
+    }
+    //SDL_AudioSpec
+    wanted_spec.freq = aCodecCtx->sample_rate;
+    wanted_spec.format = AUDIO_S16SYS;//AUDIO_S16SYS
+    wanted_spec.channels = aCodecCtx->channels;
+//    wanted_spec.silence = 0;
+    wanted_spec.samples = aCodecCtx->frame_size;
+    wanted_spec.callback = fill_audio;
+    wanted_spec.userdata = aCodecCtx;
+
+    if (SDL_OpenAudio(&wanted_spec, nullptr)<0){
+        printf("can't open audio.\n");
+        exit(1);
+    }
+    au_convert_ctx = swr_alloc();
+    au_convert_ctx=swr_alloc_set_opts(au_convert_ctx,AV_CH_LAYOUT_STEREO, AV_SAMPLE_FMT_S16, aCodecCtx->sample_rate,
+                                      in_channel_layout,aCodecCtx->sample_fmt , aCodecCtx->sample_rate,0, nullptr);
+    swr_init(au_convert_ctx);
 }
 void CFFmpegVideo::write_frames()
 {
     status = STARTED;
     packet = av_packet_alloc();
 //    int c = 0;
+
+//    int x = 0;
+//    while (x >= 0)
+//    {
+////        mu_fmt_ctx.lock();
+//        x = av_read_frame(pFormatCtx, packet);
+//        if (x >= 0 && !ctx_flag)
+//        {
+//            if(packet->stream_index==videoStream)
+//            {
+//                write_current_frame();
+//            }
+//            if (packet->stream_index == audioStream)
+//            {
+//                write_audio_frame();
+//            }
+//            av_packet_unref(packet);
+//        }
+////        mu_fmt_ctx.unlock();
+////        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+////        usleep(10);
+//    }
+
+
+
+
+
+//    mu_fmt_ctx.lock();
     while(av_read_frame(pFormatCtx, packet)>=0)
     {
+
+//        mu_fmt_ctx.unlock();
         // Is this a packet from the video stream?
         if(packet->stream_index==videoStream)
         {
@@ -213,10 +338,42 @@ void CFFmpegVideo::write_frames()
 //            c++;
         }
 
+        if (packet->stream_index == audioStream)
+        {
+            write_audio_frame();
+
+        }
+
+        av_packet_unref(packet);
+//        mu_fmt_ctx.lock();
     }
+//    mu_fmt_ctx.unlock();
     av_packet_unref(packet);
-//    printf("video: %d\n",t);
+    printf("video: %d\n",t);
+
+
+
+
+//    t = 0;
+//    time1 = (float)pFormatCtx->duration / 1000000;
+//    fps = pFormatCtx->streams[audioStream]->nb_frames / time1;
+//
+//    ts = (float)pCodecCtx->time_base.den / fps;
+//    float sec = 0.0;
+//    while (av_read_frame(pFormatCtx, packet) >= 0)
+//    {
+//        if (packet->stream_index == audioStream)
+//        {
+//            write_audio_frame();
+//
+//        }
+//        av_packet_unref(packet);
+//    }
+//    printf("audio: %d\n",t);
     flag = false;
+
+
+
 }
 attribute_deprecated void CFFmpegVideo::read_frames()
 {
@@ -301,6 +458,10 @@ long CFFmpegVideo::GetCurrentPTS()
 {
     return CurrentPTS;
 }
+long CFFmpegVideo::GetAudioPTS() {
+    return AudioPTS;
+}
+
 bool CFFmpegVideo::MediaFinished()
 {
     return Vfinish;
@@ -348,8 +509,22 @@ void CFFmpegVideo::SkipFrame()
         CurrentPTS = av_rescale_q(frame->pts, pFormatCtx->streams[videoStream]->time_base, {1,100000});
     }
     mu.unlock();
-
 }
+
+void CFFmpegVideo::SkipAudioFrame()
+{
+    AVFrame *frame;
+    mu.lock();
+    if (aframe_buf.size() > 1)
+    {
+        av_frame_unref(aframe_buf.front());
+        aframe_buf.pop_front();
+        frame = aframe_buf.front();
+        AudioPTS = av_rescale_q(frame->pts, pFormatCtx->streams[audioStream]->time_base, {1,100000});
+    }
+    mu.unlock();
+}
+
 
 void CFFmpegVideo::callbackL() {
 
@@ -358,13 +533,23 @@ void CFFmpegVideo::callbackL() {
     {
         av_frame_unref(it);
     }
+    for (auto it : aframe_buf)
+    {
+        av_frame_unref(it);
+    }
     vframe_buf.clear();
+    aframe_buf.clear();
     mu.unlock();
 //    int vrew = 1000000;
     CurrentPTS -= REWIND;
+    AudioPTS -= REWIND;
 //    t -= rew;
-    av_seek_frame(pFormatCtx, videoStream, av_rescale_q(CurrentPTS, {1,100000},pFormatCtx->streams[videoStream]->time_base), AVSEEK_FLAG_BACKWARD);
-
+//    av_seek_frame(pFormatCtx, videoStream, av_rescale_q(CurrentPTS>AudioPTS?AudioPTS:CurrentPTS, {1,100000},pFormatCtx->streams[videoStream]->time_base), AVSEEK_FLAG_BACKWARD);
+    ctx_flag = true;
+//    mu_fmt_ctx.lock();
+    av_seek_frame(pFormatCtx, audioStream, av_rescale_q(AudioPTS, {1,100000},pFormatCtx->streams[audioStream]->time_base), AVSEEK_FLAG_BACKWARD);
+//    mu_fmt_ctx.unlock();
+    ctx_flag = false;
 }
 
 void CFFmpegVideo::callbackR() {
@@ -373,12 +558,83 @@ void CFFmpegVideo::callbackR() {
     {
         av_frame_unref(it);
     }
+    for (auto it : aframe_buf)
+    {
+        av_frame_unref(it);
+    }
     vframe_buf.clear();
+    aframe_buf.clear();
     mu.unlock();
 //    int vrew = 1000000;
     CurrentPTS += REWIND;
-//    t += rew;
-    av_seek_frame(pFormatCtx, videoStream, av_rescale_q(CurrentPTS, {1,100000},pFormatCtx->streams[videoStream]->time_base), AVSEEK_FLAG_BACKWARD);
+    AudioPTS += REWIND;
+//    t -= rew;
+
+//    mu_fmt_ctx.lock();
+    ctx_flag = true;
+    av_seek_frame(pFormatCtx, audioStream, av_rescale_q(AudioPTS, {1,100000},pFormatCtx->streams[audioStream]->time_base), AVSEEK_FLAG_BACKWARD);
+    ctx_flag = false;
+//    mu_fmt_ctx.unlock();
+
+    //    av_seek_frame(pFormatCtx, videoStream, av_rescale_q(CurrentPTS, {1,100000},pFormatCtx->streams[videoStream]->time_base), AVSEEK_FLAG_BACKWARD);
 
 }
+
+void CFFmpegVideo::write_audio_frame() {
+    aFrame=av_frame_alloc();
+    avcodec_send_packet(aCodecCtx, packet);
+    avcodec_receive_frame(aCodecCtx, aFrame);
+//        pFrame->pts = av_rescale_q(packet->pts, pFormatCtx->streams[audioStream]->time_base, {1,1000});
+//        Pts = pFrame->pts;
+//        av_seek_frame(pFormatCtx, audioStream, 0, AVSEEK_FLAG_FRAME);
+//        pFrame->coded_picture_number
+    while (aframe_buf.size() > 500)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    mu.lock();
+    aframe_buf.push_back(aFrame);
+    mu.unlock();
+
+}
+
+void CFFmpegVideo::ReadAudioFrame() {
+
+        AVFrame *frame;
+        mu.lock();
+        if (aframe_buf.empty() && !flag)
+        {
+            mu.unlock();
+//            Afinish = true;
+            Callback();
+//            status = FINISHED;
+            return;
+        }
+        if (aframe_buf.empty())
+        {
+            mu.unlock();
+            return;
+        }
+
+        frame = aframe_buf.front();
+        aframe_buf.pop_front();
+        mu.unlock();
+        AudioPTS = av_rescale_q(frame->pts, pFormatCtx->streams[audioStream]->time_base, {1,100000});
+        swr_convert(au_convert_ctx,&out_buffer, MAX_AUDIO_FRAME_SIZE,(const uint8_t **)frame->data , frame->nb_samples);
+
+        while(audio_len>0)//Wait until finish
+            SDL_Delay(1);
+
+        audio_chunk = (Uint8 *) out_buffer;
+        audio_len = out_buffer_size;
+        audio_pos = audio_chunk;
+        av_frame_unref(frame);
+//        Callback();
+
+
+
+}
+
+
+
 

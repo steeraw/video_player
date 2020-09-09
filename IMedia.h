@@ -8,8 +8,8 @@
 #define REWIND 1000000
 //0.3 seconds
 #define DELAY_SMALL 30000
-//9 seconds
-#define DELAY_BIG 900000
+//7 seconds
+#define DELAY_BIG 700000
 
 
 #include <functional>
@@ -51,6 +51,10 @@ public:
     virtual void SetStatus(MediaStatus mediaStatus) = 0;
     virtual void callbackL() = 0;
     virtual void callbackR() = 0;
+    virtual long GetAudioPTS() = 0;
+    virtual void SkipAudioFrame() = 0;
+
+    virtual void ReadAudioFrame() = 0;
 };
 
 

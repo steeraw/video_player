@@ -89,7 +89,7 @@ void KeyHandler::Check()
                 ////REWIND
 
                 CallbackVL();
-                CallbackAL();
+//                CallbackAL();
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
             }
             else if(event.code == KEY_ENTER && event.value ==1)
@@ -97,7 +97,7 @@ void KeyHandler::Check()
                 ////REWIND
 
                 CallbackVR();
-                CallbackAR();
+//                CallbackAR();
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
             }
 //            else
